@@ -7,6 +7,7 @@ import {
   CLOSE_HOUR,
   OPEN_HOUR,
   SLOT_MINUTES,
+  toUtcIso,
   VISIT_MODES,
   VISIT_TYPES,
   visitDurationMinutes,
@@ -111,12 +112,12 @@ export function seedData(now = new Date()) {
       providerId: provider.id,
       visitType,
       mode: faker.helpers.arrayElement(VISIT_MODES),
-      startsAt: startsAt.toISOString(),
+      startsAt: toUtcIso(startsAt),
       durationMinutes: duration,
       status: apptStatus,
       insurance: insurance(),
       cancellationReason: apptStatus === "cancelled" ? faker.helpers.arrayElement(CANCELLATION_REASONS) : null,
-      createdAt: subDays(startsAt, faker.number.int({ min: 1, max: 21 })).toISOString(),
+      createdAt: toUtcIso(subDays(startsAt, faker.number.int({ min: 1, max: 21 }))),
     });
   }
 

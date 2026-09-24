@@ -33,14 +33,14 @@ export const toUtcIso = (date: Date) => new Date(date.getTime()).toISOString();
 const US_PHONE = /^1?[2-9]\d{2}[2-9]\d{6}$/;
 
 export const patientSchema = z.object({
-  firstName: z.string().trim().min(1, "First name is required").max(100),
-  lastName: z.string().trim().min(1, "Last name is required").max(100),
+  firstName: z.string("First name is required").trim().min(1, "First name is required").max(100),
+  lastName: z.string("Last name is required").trim().min(1, "Last name is required").max(100),
   dateOfBirth: z.iso
     .date("Enter a valid date of birth")
     .refine((dob) => differenceInYears(new Date(), parseISO(dob)) >= 18, "Patient must be 18 or older"),
   email: z.email("Enter a valid email"),
   phone: z
-    .string()
+    .string("Enter a valid US phone number")
     .trim()
     .refine((value) => US_PHONE.test(value.replace(/\D/g, "")), "Enter a valid US phone number"),
 });
@@ -49,9 +49,9 @@ export const visitSchema = z
   .object({
     type: z.enum(VISIT_TYPES, "Choose a visit type"),
     mode: z.enum(VISIT_MODES, "Choose a visit mode"),
-    providerId: z.string().min(1, "Choose a provider"),
+    providerId: z.string("Choose a provider").min(1, "Choose a provider"),
     date: z.iso.date("Choose a date"),
-    time: z.string().regex(/^([01]\d|2[0-3]):(00|30)$/, "Choose a time on a 30-minute slot"),
+    time: z.string("Choose a time").regex(/^([01]\d|2[0-3]):(00|30)$/, "Choose a time on a 30-minute slot"),
   })
   .superRefine(({ type, date, time }, ctx) => {
     const [year, month, day] = date.split("-").map(Number);

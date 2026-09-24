@@ -7,14 +7,24 @@ export const OPEN_HOUR = 9;
 export const CLOSE_HOUR = 17;
 export const SLOT_MINUTES = 30;
 
-export const VISIT_TYPES = ["new-patient", "follow-up", "medication-management", "therapy"] as const;
+export const VISIT_TYPES = ["initial", "follow-up", "medication-management"] as const;
 export const VISIT_MODES = ["in-person", "telehealth"] as const;
 export const PAYMENT_METHODS = ["self-pay", "insurance"] as const;
+export const STATUSES = ["scheduled", "checked-in", "completed", "cancelled", "no-show"] as const;
 
 export type VisitType = (typeof VISIT_TYPES)[number];
+export type VisitMode = (typeof VISIT_MODES)[number];
+export type AppointmentStatus = (typeof STATUSES)[number];
 
-export function visitDurationMinutes(type: VisitType) {
+export function visitDurationMinutes(type: VisitType): 30 | 60 {
   return type === "medication-management" ? 30 : 60;
+}
+
+/** Wall-clock `date` + `time` in the clinic's timezone, as an absolute instant. */
+export function clinicStartsAt(date: string, time: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  return new TZDate(year, month - 1, day, hour, minute, CLINIC_TIME_ZONE);
 }
 
 const US_PHONE = /^1?[2-9]\d{2}[2-9]\d{6}$/;
@@ -55,8 +65,7 @@ export const visitSchema = z
       ctx.addIssue({ code: "custom", path: ["time"], message: "Visits must fall between 9:00 and 17:00" });
     }
 
-    const startsAt = new TZDate(year, month - 1, day, hour, minute, CLINIC_TIME_ZONE);
-    if (startsAt.getTime() <= Date.now()) {
+    if (clinicStartsAt(date, time).getTime() <= Date.now()) {
       ctx.addIssue({ code: "custom", path: ["time"], message: "Choose a time in the future" });
     }
   });

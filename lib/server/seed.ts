@@ -1,7 +1,7 @@
 import { faker } from "@faker-js/faker";
 import { TZDate } from "@date-fns/tz";
-import { addDays, format, isWeekend, subDays } from "date-fns";
-import type { Appointment, AppointmentStatus, Provider } from "../domain";
+import { addDays, format, isSameDay, isWeekend, subDays } from "date-fns";
+import type { Appointment, AppointmentStatus, Insurance, Provider } from "../domain";
 import {
   CLINIC_TIME_ZONE,
   CLOSE_HOUR,
@@ -10,7 +10,6 @@ import {
   VISIT_MODES,
   VISIT_TYPES,
   visitDurationMinutes,
-  type Payment,
 } from "../schema";
 
 const SEED = 20260923;
@@ -20,8 +19,12 @@ const DAY_RANGE = 30;
 
 const SPECIALTIES = ["Psychiatry", "Family Medicine", "Internal Medicine", "Clinical Psychology"];
 const CARRIERS = ["Aetna", "Blue Cross Blue Shield", "Cigna", "UnitedHealthcare", "Humana", "Kaiser Permanente"];
-
-const pad = (n: number) => String(n).padStart(2, "0");
+const CANCELLATION_REASONS = [
+  "Patient requested to reschedule",
+  "Provider unavailable that day",
+  "Patient no longer needs the visit",
+  "Insurance authorization not received",
+];
 
 function usPhone() {
   const area = faker.number.int({ min: 201, max: 989 });
@@ -29,27 +32,35 @@ function usPhone() {
   return `(${area}) ${exchange}-${faker.string.numeric(4)}`;
 }
 
-function payment(): Payment {
-  if (faker.datatype.boolean(0.3)) return { method: "self-pay" };
+function insurance(): Insurance | null {
+  if (faker.datatype.boolean(0.3)) return null;
   return {
-    method: "insurance",
     carrier: faker.helpers.arrayElement(CARRIERS),
     memberId: faker.string.alphanumeric({ length: 9, casing: "upper" }),
-    groupNumber: faker.helpers.maybe(() => faker.string.numeric(6), { probability: 0.6 }),
+    groupNumber: faker.helpers.maybe(() => faker.string.numeric(6), { probability: 0.6 }) ?? null,
   };
 }
 
-function status(isPast: boolean): AppointmentStatus {
-  return isPast
-    ? faker.helpers.weightedArrayElement([
-        { value: "completed", weight: 75 },
-        { value: "no-show", weight: 10 },
-        { value: "cancelled", weight: 15 },
-      ])
-    : faker.helpers.weightedArrayElement([
-        { value: "scheduled", weight: 85 },
-        { value: "cancelled", weight: 15 },
-      ]);
+function status(startsAt: Date, now: Date): AppointmentStatus {
+  if (startsAt.getTime() >= now.getTime()) {
+    return faker.helpers.weightedArrayElement([
+      { value: "scheduled", weight: 85 },
+      { value: "cancelled", weight: 15 },
+    ]);
+  }
+  // Earlier today: the patient may still be in the building.
+  if (isSameDay(new TZDate(startsAt, CLINIC_TIME_ZONE), new TZDate(now, CLINIC_TIME_ZONE))) {
+    return faker.helpers.weightedArrayElement([
+      { value: "checked-in", weight: 50 },
+      { value: "completed", weight: 40 },
+      { value: "no-show", weight: 10 },
+    ]);
+  }
+  return faker.helpers.weightedArrayElement([
+    { value: "completed", weight: 75 },
+    { value: "no-show", weight: 10 },
+    { value: "cancelled", weight: 15 },
+  ]);
 }
 
 export function seedData(now = new Date()) {
@@ -69,8 +80,8 @@ export function seedData(now = new Date()) {
     const day = addDays(today, faker.number.int({ min: -DAY_RANGE, max: DAY_RANGE }));
     if (isWeekend(day)) continue;
 
-    const type = faker.helpers.arrayElement(VISIT_TYPES);
-    const duration = visitDurationMinutes(type);
+    const visitType = faker.helpers.arrayElement(VISIT_TYPES);
+    const duration = visitDurationMinutes(visitType);
     const lastStart = CLOSE_HOUR * 60 - duration;
     const start = OPEN_HOUR * 60 + SLOT_MINUTES * faker.number.int({ max: (lastStart - OPEN_HOUR * 60) / SLOT_MINUTES });
     const provider = faker.helpers.arrayElement(providers);
@@ -84,13 +95,12 @@ export function seedData(now = new Date()) {
     slotKeys.forEach((key) => taken.add(key));
 
     const startsAt = new TZDate(day.getFullYear(), day.getMonth(), day.getDate(), 0, start, CLINIC_TIME_ZONE);
+    const apptStatus = status(startsAt, now);
     const firstName = faker.person.firstName();
     const lastName = faker.person.lastName();
 
     appointments.push({
       id: faker.string.uuid(),
-      status: status(startsAt.getTime() < now.getTime()),
-      createdAt: subDays(startsAt, faker.number.int({ min: 1, max: 21 })).toISOString(),
       patient: {
         firstName,
         lastName,
@@ -98,17 +108,17 @@ export function seedData(now = new Date()) {
         email: faker.internet.email({ firstName, lastName }).toLowerCase(),
         phone: usPhone(),
       },
-      visit: {
-        type,
-        mode: faker.helpers.arrayElement(VISIT_MODES),
-        providerId: provider.id,
-        date,
-        time: `${pad(Math.floor(start / 60))}:${pad(start % 60)}`,
-      },
-      payment: payment(),
+      providerId: provider.id,
+      visitType,
+      mode: faker.helpers.arrayElement(VISIT_MODES),
+      startsAt: startsAt.toISOString(),
+      durationMinutes: duration,
+      status: apptStatus,
+      insurance: insurance(),
+      cancellationReason: apptStatus === "cancelled" ? faker.helpers.arrayElement(CANCELLATION_REASONS) : null,
+      createdAt: subDays(startsAt, faker.number.int({ min: 1, max: 21 })).toISOString(),
     });
   }
 
-  appointments.sort((a, b) => `${a.visit.date}${a.visit.time}`.localeCompare(`${b.visit.date}${b.visit.time}`));
   return { providers, appointments };
 }

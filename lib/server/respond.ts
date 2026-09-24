@@ -15,3 +15,5 @@ export const ok = <T>(data: T, status = 200, message = "OK") =>
 
 export const fail = (message: string, status: number, errors?: Record<string, string[]>) =>
   NextResponse.json({ success: false, message, ...(errors && { errors }) }, { status });
+
+export const simulatedFailure = () => fail("Simulated server error", 500);

@@ -7,3 +7,11 @@ const createDb = (): Db => seedData();
 
 const g = globalThis as unknown as { __db?: Db };
 export const db = () => (g.__db ??= createDb());
+
+export async function listProviders() {
+  return db().providers;
+}
+
+export async function getAppointment(id: string) {
+  return db().appointments.find((a) => a.id === id);
+}
